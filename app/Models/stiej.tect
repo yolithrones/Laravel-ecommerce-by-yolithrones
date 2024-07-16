@@ -1,0 +1,1075 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+
+use Illuminate\Support\Facades\Redirect;
+
+use App\Http\Controllers\Controller;
+
+use Illuminate\Support\Facades\Auth;
+
+use Illuminate\Support\Facades\DB;
+
+
+use App\Models\User;
+
+use App\Models\Product;
+
+use App\Models\Cart;
+
+use App\Models\Category;
+
+use App\Models\Order;
+
+use App\Models\Comment;
+
+use App\Models\Reply;
+
+
+class HomeController extends Controller
+{
+    public function index(){
+        $item=Product::paginate(8);
+        $cartCount = '';
+
+        // Initialize an empty array to store the available colors
+        $colors = [];
+        $sizes = [];
+
+        // Loop through each product and add its colors to the array
+        foreach ($item as $items) {
+            $itemColors = explode(',', $items->color);
+            foreach ($itemColors as $color) {
+                $color = trim($color);
+                if (!in_array($color, $colors)) {
+                    $colors[] = $color;
+                }
+            }
+
+        
+
+            $itemSizes = explode(',', $items->size);
+            foreach ($itemSizes as $size) {
+                $size = trim($size);
+                if (!in_array($size, $sizes)) {
+                    $sizes[] = $size;
+                }
+            }
+        }
+
+        return view('home.shopsaints', compact('item', 'colors', 'sizes', 'cartCount') ) ;
+    }
+
+    public function shopsaints(){
+    $usertype = Auth::user()->usertype;
+
+    if ($usertype == '1') {
+
+        $total_product=product::all()->count();
+
+        $orders_total=order::all()->count();
+
+        $client_count=user::all()->count();
+        
+
+        $order=order::all();
+
+        $gross_earning=0;
+
+        foreach($order as $order){
+
+            $gross_earning=$gross_earning+ $order->price;
+
+            $exchangeRateUSD = 750;
+
+            $totalPriceUSD = $gross_earning / $exchangeRateUSD;
+
+        }
+
+         $itemOrdered = $orderId ? Order::find($orderId) : null;
+
+
+
+        $total_deliverd=order::where('deliveryStatus' ,'=' , 'Delivered')->get()->count();
+
+        $total_pending=order::where('deliveryStatus' ,'=' , 'pending...')->get()->count();
+        
+
+
+        return view('saint.homepage', compact('total_product', 'orders_total', 'client_count', 'totalPriceUSD', 'total_deliverd', 'total_pending'));
+    } else {
+        $item = Product::paginate(8);
+        $colors = [];
+        $sizes = [];
+
+        foreach ($item as $items) {
+            $itemColors = explode(',', $items->color);
+            foreach ($itemColors as $color) {
+                $color = trim($color);
+                if (!in_array($color, $colors)) {
+                    $colors[] = $color;
+                }
+            }
+
+            $itemSizes = explode(',', $items->size);
+            foreach ($itemSizes as $size) {
+                $size = trim($size);
+                if (!in_array($size, $sizes)) {
+                    $sizes[] = $size;
+                }
+            }
+        }
+
+        $userId = Auth::user()->id;
+        $cartCount = cart::where('userId', '=', $userId)->sum('quantity');
+       
+        return view('home.shopsaints', compact('item', 'colors', 'sizes', 'cartCount'));
+    }
+}
+
+
+
+
+    
+
+public function itemDetails(Request $request, $id)
+{
+    $item = Product::find($id);
+    $colors = [];
+
+    foreach ($item as $items) {
+        $itemColors = explode(',', $item->color);
+        foreach ($itemColors as $color) {
+            $color = trim($color);
+            if (!in_array($color, $colors)) {
+                $colors[] = $color;
+            }
+        }
+    }
+
+    $sizes = [];
+
+    foreach ($item as $items) {
+        $itemSizes = explode(',', $item->size);
+        foreach ($itemSizes as $size) {
+            $size = trim($size);
+            if (!in_array($size, $sizes)) {
+                $sizes[] = $size;
+            }
+        }
+    }
+
+    $sizes = explode(',', $item->size);
+    $comment = Comment::orderBy('id', 'desc')->get();
+    $reply = Reply::all();
+
+    if (Auth::id()) {
+        $buyerId = Auth::user()->id;
+        $cartCount = Cart::where('userId', $buyerId)->sum('quantity');
+    } else {
+        $cartCount = 0;
+    }
+
+    return view('home.viewDetails', compact('item', 'sizes', 'colors', 'comment', 'reply', 'cartCount'));
+}
+
+    public function addCart(Request $request, $id){
+        if (Auth::id()) {
+
+            $buyer=Auth::user();
+
+            $buyerId=$buyer->id;
+
+            $item=product::find($id);
+
+            $itemId_exist=cart::where('productId', '=', $id)->where('userId', '=',$buyerId )->get('id')->first();
+
+            if ($itemId_exist) {
+
+                $cart=cart::find($itemId_exist)->first();
+
+                $quantity=$cart->quantity;
+
+                $cart->quantity = $quantity + $request->qty;
+
+                if ($item->discountPrice!=null) {
+                    $cart->price=$item->discountPrice * $cart->quantity;
+                }
+    
+                else {
+                    $cart->price=$item->price * $cart->quantity;
+                }
+    
+                
+
+                $cart->save();
+
+                return redirect()->back();
+            }                                                    
+
+            else {
+                $cartItem=new cart;
+
+            $itemColors = explode(',', $item->color);
+            $colors = array_map('trim', $itemColors);
+
+            $itemSizes = explode(',', $item->size);
+            $sizes = array_map('trim', $itemSizes);
+
+
+            $cartItem->name=$buyer->name;
+            $cartItem->lastName=$buyer->lastName;
+            $cartItem->email=$buyer->email;
+            $cartItem->phone=$buyer->phone;
+            $cartItem->address=$buyer->address;
+            $cartItem->userID=$buyer->id;
+
+            $cartItem->productTitle=$item->title;
+
+            $cartItem->quantity=$request->qty;
+
+            $cartItem->image=$item->image;
+
+            $cartItem->color = $request->color;
+
+
+            $cartItem->size=$request->size;
+
+            if ($item->discountPrice!=null) {
+                $cartItem->price=$item->discountPrice * $request->qty;
+            }
+
+            else {
+                $cartItem->price=$item->price * $request->qty;
+            }
+
+              
+
+            $cartItem->productId=$item->id;
+
+            $cartItem->save();
+
+
+            return redirect()->back();
+            }
+            
+
+            
+
+        }
+
+        else{
+            return redirect('login');
+        }
+    }
+
+    public function displayCart(){
+        if (Auth::id()) {
+            $id=Auth::user()->id;  
+            $cart=cart::where('userId','=', $id)->get();
+            $cartCount = cart::where('userId', '=', $id)->sum('quantity');
+            return view('home.viewcart', compact('cart', 'cartCount'));
+        }
+
+        else {
+            return redirect('login');
+        }
+        
+
+    }
+
+    
+    public function updateCart(Request $request)
+    {
+        foreach ($request->qty as $itemId => $newQuantity) {
+            $updateConfirm = Cart::find($itemId);
+    
+            if (!$updateConfirm) {
+                return redirect()->back()->with('message', 'Invalid cart item');
+            }
+    
+            $previousQuantity = $updateConfirm->quantity;
+            $quantityDifference = $newQuantity - $previousQuantity;
+    
+            $updateConfirm->quantity = $newQuantity;
+    
+            if ($quantityDifference > 0) {
+                $updateConfirm->price += $quantityDifference * ($updateConfirm->price / $previousQuantity);
+            } elseif ($quantityDifference < 0) {
+                $updateConfirm->price -= abs($quantityDifference) * ($updateConfirm->price / $previousQuantity);
+            }
+    
+            $updateConfirm->save();
+        }
+    
+        if ($updateConfirm) {
+            return redirect()->back()->with('message', 'Cart has been updated');
+        } else {
+            return redirect()->back()->with('message', 'Failed to update cart');
+        }
+    }
+    
+
+    
+    
+    
+    
+
+    
+
+
+    public function removeCart($id){
+        $cartX=cart::find($id);
+
+        $cartX->delete();
+
+        return redirect()->back();
+
+    }
+
+    public function orderCheckout(){
+        $client=Auth::user();
+        $clientId=$client->id;
+        $data=cart::where('userId', '=', $clientId)->get();
+        
+        foreach ($data as $data) {
+            $itemOrdered=new order;
+
+            $itemOrdered->name=$data->name;
+            $itemOrdered->lastName=$data->lastName;
+            $itemOrdered->email=$data->email;
+            $itemOrdered->phone=$data->phone;
+            $itemOrdered->address=$data->address;
+            $itemOrdered->userId=$data->userId;
+
+            $itemOrdered->productTitle=$data->productTitle;
+            $itemOrdered->quantity=$data->quantity;
+            $itemOrdered->image=$data->image;
+            $itemOrdered->color=$data->color;
+            $itemOrdered->size=$data->size;
+            $itemOrdered->price=$data->price;
+            $itemOrdered->productId=$data->productId;
+
+            $itemOrdered->paymentStatus='card payment';
+            $itemOrdered->deliveryStatus='incoming saint...';
+
+            $itemOrdered->save();
+
+            $cartId=$data->id;
+            $cart=cart::find($cartId);
+            $cart->delete();
+
+        }
+
+        return redirect()->back()->with('message', 'Incomming Saint !? Ordered has been placed ');
+
+
+    }
+
+      
+    public function saintCgheckout()
+    {
+        $client = Auth::user();
+        $clientId = $client->id;
+        $cart = Cart::where('userId', $clientId)->get();
+    
+        if ($cart->isEmpty()) {
+            return view('home.empty');
+        }
+    
+        $orderItems = [];
+    
+        foreach ($cart as $cartItem) {
+            $existingOrderItem = Order::where('userId', $clientId)
+                ->where('productId', $cartItem->productId)
+                ->first();
+    
+            if ($existingOrderItem && ($existingOrderItem->paymentStatus !== 'Payment Confirmed' && $existingOrderItem->paymentStatus !== 'Transaction Failed')) {
+                continue;
+            }
+    
+            $itemOrdered = $existingOrderItem ? $existingOrderItem : new Order();
+    
+            $itemOrdered->fill($cartItem->toArray());
+    
+            $itemOrdered->name = $cartItem->name;
+            $itemOrdered->lastName = $cartItem->lastName;
+            $itemOrdered->email = $cartItem->email;
+            $itemOrdered->phone = $cartItem->phone;
+            $itemOrdered->address = $cartItem->address;
+            $itemOrdered->country = $cartItem->country;
+            $itemOrdered->apartment = $cartItem->apartment;
+            $itemOrdered->state = $cartItem->state;
+            $itemOrdered->town = $cartItem->town;
+            $itemOrdered->postCode = $cartItem->postCode;
+            $itemOrdered->userId = $cartItem->userId;
+    
+            $itemOrdered->productTitle = $cartItem->productTitle;
+            $itemOrdered->image = $cartItem->image;
+            $itemOrdered->color = $cartItem->color;
+            $itemOrdered->size = $cartItem->size;
+            $itemOrdered->price = $cartItem->price;
+            $itemOrdered->quantity = $cartItem->quantity;
+            $itemOrdered->productId = $cartItem->productId;
+    
+            $itemOrdered->paymentStatus = 'processing....';
+            $itemOrdered->trxRef = 'N/A';
+            $itemOrdered->trxId = 'N/A';
+            $itemOrdered->deliveryStatus = 'pending...';
+            $itemOrdered->save();
+    
+            $orderItems[] = $itemOrdered;
+        }
+    
+        $existingOrderItems = Order::where('userId', $clientId)->get();
+    
+        foreach ($existingOrderItems as $existingOrderItem) {
+            $foundInCart = $cart->contains('productId', $existingOrderItem->productId);
+    
+            if (!$foundInCart && ($existingOrderItem->paymentStatus !== 'Payment Confirmed' && $existingOrderItem->paymentStatus !== 'Transaction Failed')) {
+                $existingOrderItem->delete();
+            }
+        }
+        $latestOrder = null;
+
+        if (!empty($orderItems)) {
+            $latestOrder = $orderItems[count($orderItems) - 1];
+        }
+        $cartCount = Cart::where('userId', $clientId)->sum('quantity');
+    
+
+        return view('home.checkout', compact('cart', 'latestOrder', 'cartCount'));
+    }
+    
+
+
+    
+    public function saintCheckout(){
+        $client = Auth::user();
+        $clientId = $client->id;
+        $data = Cart::where('userId', '=', $clientId)->get();
+    
+        if ($data->isEmpty()) {
+            return view('home.empty');
+        } else {
+            $cart = Cart::where('userId', '=', $clientId)->get();
+            $orderId = null;
+    
+            // Check if an order ID is already associated with the cart items
+            if ($cart->isNotEmpty()) {
+                $orderId = $cart[0]->ordered;
+            }
+    
+            foreach ($cart as $cartItem) {
+                // Check if an order ID is already associated with the cart item
+                $orderId = $cartItem->ordered;
+    
+                $itemOrdered = null;
+    
+                if ($orderId) {
+                    // Order already exists, retrieve the existing order
+                    $itemOrdered = Order::find($orderId);
+                }
+    
+                if (!$itemOrdered) {
+                    // Order does not exist, create a new one
+                    $itemOrdered = new Order();
+                    $itemOrdered->save();
+    
+                    $orderId = $itemOrdered->id;
+                    // Update the ordered field for the current cart item
+                    $cartItem->ordered = $orderId;
+                    $cartItem->save();
+                }
+    
+                // Update the fields for each cart item
+                $itemOrdered->name = $cartItem->name;
+                $itemOrdered->lastName = $cartItem->lastName;
+                $itemOrdered->email = $cartItem->email;
+                $itemOrdered->phone = $cartItem->phone;
+                $itemOrdered->address = $cartItem->address;
+                $itemOrdered->userId = $cartItem->userId;
+    
+                $itemOrdered->productTitle = $cartItem->productTitle;
+                $itemOrdered->image = $cartItem->image;
+                $itemOrdered->color = $cartItem->color;
+                $itemOrdered->size = $cartItem->size;
+                $itemOrdered->price = $cartItem->price;
+                $itemOrdered->quantity = $cartItem->quantity;
+                $itemOrdered->productId = $cartItem->productId;
+                $itemOrdered->paymentStatus = 'processing....';
+                $itemOrdered->trxRef = 'N/A';
+                $itemOrdered->trxId = 'N/A';
+                $itemOrdered->deliveryStatus = 'pending...';
+    
+                $cartProductIds = $cart->pluck('productId')->toArray();
+
+               // Retrieve the order items that are associated with the user
+                $existingOrderItems = Order::where('userId', '=', $clientId)->get();
+
+                foreach ($existingOrderItems as $existingOrderItem) {
+                // Check if the order item's product ID exists in the current cart
+                 $foundInCart = $cart->contains('productId', $existingOrderItem->productId);
+
+                    if (!$foundInCart && $existingOrderItem->paymentStatus !== 'Payment Confirmed') {
+                     // Update the existing order item with the corresponding cart item's values
+                        $cartItem = Cart::where('productId', '=', $existingOrderItem->productId)
+                        ->where('userId', '=', $clientId)
+                        ->orderBy('created_at', 'desc')
+                        ->first();
+
+                    if ($cartItem) {
+                       $existingOrderItem->name = $cartItem->name;
+                       $existingOrderItem->lastName = $cartItem->lastName;
+                       $existingOrderItem->email = $cartItem->email;
+                       $existingOrderItem->phone = $cartItem->phone;
+                       $existingOrderItem->address = $cartItem->address;
+                       $existingOrderItem->userId = $cartItem->userId;
+
+                       $existingOrderItem->productTitle = $cartItem->productTitle;
+                       $existingOrderItem->image = $cartItem->image;
+                       $existingOrderItem->color = $cartItem->color;
+                       $existingOrderItem->size = $cartItem->size;
+                       $existingOrderItem->price = $cartItem->price;
+                       $existingOrderItem->quantity = $cartItem->quantity;
+                       $existingOrderItem->productId = $cartItem->productId;
+                       $existingOrderItem->paymentStatus = $cartItem->paymentStatus;
+                       $existingOrderItem->trxRef =  $cartItem->trxRef;
+                       $existingOrderItem->trxId =  $cartItem->trxId;
+                       $existingOrderItem->deliveryStatus =  $cartItem->deliveryStatus;
+
+                       $existingOrderItem->country = $cartItem->country;
+                       $existingOrderItem->town = $cartItem->town;
+                       $existingOrderItem->state = $cartItem->state;
+                       $existingOrderItem->postCode = $cartItem->postCode;
+                       $existingOrderItem->apartment = $cartItem->apartment;
+                       
+                        $existingOrderItem->save();
+                    } else {
+                       // Handle the case where the associated cart item was deleted
+                        //existingOrderItem->ordered = $cartItem->ordered;
+                       // You can choose to delete the order item or update its status as needed
+                       // For example:
+                        $existingOrderItem->delete();
+                    }
+                }
+            }
+
+            $itemOrdered->save();
+        }
+    
+            // Retrieve the product IDs from the current cart
+            $cartProductIds = $cart->pluck('productId')->toArray();
+    
+            // Retrieve the order items that are associated with the user
+            $existingOrderItems = Order::where('userId', '=', $clientId)->get();
+    
+            foreach ($existingOrderItems as $existingOrderItem) {
+                $foundInCart = in_array($existingOrderItem->productId, $cartProductIds);
+    
+                if (!$foundInCart && $existingOrderItem->paymentStatus !== 'Payment Confirmed') {
+                    // Delete the order item that was removed from the cart and not associated with any other cart
+                    $existingOrderItem->delete();
+                }
+            }
+    
+            // Retrieve the latest order after saving the items
+            $latestOrder = Order::find($orderId);
+            $cartCount = cart::where('userId', '=', $clientId)->sum('quantity');
+    
+            return view('home.checkout', compact('cart', 'latestOrder', 'cartCount'));
+        }
+    }
+    
+    
+    
+
+
+   public function paymentHandle(Request $request){
+    if ($request->has('status')) {
+        // Check payment status
+        if ($request->input('status') == 'cancelled') {
+            return redirect()->route('shopsaints')->with('message', 'Your last payment transaction was cancelled');
+            
+            exit; // Make sure to exit after redirecting
+        } elseif ($request->input('status') == 'successful') {
+            $txid = $request->input('transaction_id');
+            $txref = $request->input('tx_ref');
+
+
+            $curl = curl_init();
+            curl_setopt_array($curl, array(
+                CURLOPT_URL => "https://api.flutterwave.com/v3/transactions/{$txid}/verify",
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_ENCODING => "",
+                CURLOPT_MAXREDIRS => 10,
+                CURLOPT_TIMEOUT => 0,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                CURLOPT_CUSTOMREQUEST => "GET",
+                CURLOPT_HTTPHEADER => array(
+                    "Content-Type: application/json",
+                    "Authorization: Bearer FLWSECK-1c7390a1a69a9925f9e6c412d10523b5-1883e45b178vt-X"
+                ),
+            ));
+
+            // Set the CA root certificates bundle option
+            curl_setopt($curl, CURLOPT_CAINFO, public_path('cacert.pem'));
+     
+            $response = curl_exec($curl);
+            curl_close($curl);
+
+            $res = json_decode($response);
+
+            if ($res && isset($res->status)) {
+                $amountPaid = $res->data->charged_amount ?? 0;
+                $amountToPay = $res->data->meta->price ?? 0;
+
+                if ($amountPaid >= $amountToPay) {
+                    // Delete the user's cart items
+                    $userId = $request->input('userId');
+                       
+                    $cartItems = Cart::where('userId', $userId)->get();
+
+                    foreach ($cartItems as $cartItem) {
+                        $cartItem->delete();
+                    }
+
+                    // Update the payment status in the Order table
+                    $orders = Order::where('userId', $userId)->where('trxRef', 'N/A')->where('trxId', 'N/A')->get();
+
+                    foreach ($orders as $order) {
+                       $order->paymentStatus = 'Payment Confirmed';
+                       $order->trxRef = $txref;
+                       $order->trxId = $txid;
+                       $order->save();
+                    }
+
+                    return redirect()->route('shopsaints')->with('message', 'Payment Successfull');
+
+
+                    // Continue to give item to the user
+                } else {
+                    echo 'Fraud transaction detected';
+                }
+            } else {
+                echo 'Cannot process payment';
+            }
+        }
+    }
+}
+
+
+    public function order_cancel($id){
+    $orders=order::find($id);
+
+    
+   
+    
+}
+
+
+public function dropComment(Request $request){
+    if(Auth::id()){
+       $comment=new comment; 
+
+       $comment->name=Auth::user()->name;
+       $comment->userId=Auth::user()->id;
+       $comment->comment=$request->comment;
+       $comment->save();
+       return redirect()->back();
+    }
+
+    else{
+        return redirect('login');
+    }
+
+}
+
+public function replyUsers(Request $request){
+    if(Auth::id()){
+       $reply=new reply; 
+
+       $reply->name=Auth::user()->name;
+       $reply->userId=Auth::user()->id;
+       $reply->commentId=$request->commentId;
+       $reply->reply=$request->reply;
+       $reply->save();
+       return redirect()->back();
+    }
+
+    else{
+        return redirect('login');
+    }
+
+}
+
+
+public function searchProduct(Request $request){
+
+    $searchMerch = $request->query('search');
+
+   
+    $item=product::where('title', 'LIKE', "%{$searchMerch}%")->orWhere('description', 'LIKE', "%{$searchMerch}%")
+    ->orWhere('category', 'LIKE', "%{$searchMerch}%")->orWhere('size', 'LIKE', "%{$searchMerch}%")
+    ->orWhere('color', 'LIKE', "%{$searchMerch}%")->orWhere('price', 'LIKE', "%{$searchMerch}%")
+    ->orWhere('discountPrice', 'LIKE', "%{$searchMerch}%")
+    ->paginate(8);
+
+    $comment=comment::orderby('id', 'desc')->get();
+    $reply=reply::all();
+    $cartCount = cart::where('userId', '=', $userId)->sum('quantity');
+
+    return view('home.shopsaints', compact('item', 'comment', 'reply', 'cartCount'));
+    
+}
+
+
+
+
+public function shopMerch(Request $request)
+{
+    $userId = Auth::id();
+    $cartCount = $userId ? Cart::where('userId', $userId)->sum('quantity') : 0;
+    $totalResults =product::all()->count();
+
+    $categories = Category::all();
+
+    $selectedColor = $request->input('color');
+    $selectedSize = $request->input('size');
+    $selectedPriceRange = $request->input('price_range');
+    $selectedCategory = $request->input('category');
+    $selectedSortBy = $request->input('sort_by');
+
+    $colors = [];
+    $sizes = [];
+
+    $products = Product::paginate(12);
+
+    foreach ($products as $item) {
+        $itemColors = explode(',', $item->color);
+        foreach ($itemColors as $color) {
+            $color = trim($color);
+            if (!in_array($color, $colors)) {
+                $colors[] = $color;
+            }
+        }
+
+        $itemSizes = explode(',', $item->size);
+        foreach ($itemSizes as $size) {
+            $size = trim($size);
+            if (!in_array($size, $sizes)) {
+                $sizes[] = $size;
+            }
+        }
+    }
+
+    $filteredProducts = Product::query();
+
+    // Apply filters
+    if ($selectedPriceRange) {
+        switch ($selectedPriceRange) {
+            case '0-50':
+                $filteredProducts = $filteredProducts->whereBetween('price', [0, 50]);
+                break;
+            case '50-100':
+                $filteredProducts = $filteredProducts->whereBetween('price', [50, 100]);
+                break;
+            case '100-150':
+                $filteredProducts = $filteredProducts->whereBetween('price', [100, 150]);
+                break;
+            case '150-200':
+                $filteredProducts = $filteredProducts->whereBetween('price', [150, 200]);
+                break;
+            case '200-250':
+                $filteredProducts = $filteredProducts->whereBetween('price', [200, 250]);
+                break;
+            case '250+':
+                $filteredProducts = $filteredProducts->where('price', '>=', 250);
+                break;
+            default:
+                break;
+        }
+    }
+
+    if ($selectedCategory) {
+        $filteredProducts = $filteredProducts->where('category', $selectedCategory);
+    }
+
+    if ($selectedSortBy) {
+        switch ($selectedSortBy) {
+            case 'price_low_high':
+                $filteredProducts = $filteredProducts->orderBy('price', 'asc');
+                break;
+            case 'price_high_low':
+                $filteredProducts = $filteredProducts->orderBy('price', 'desc');
+                break;
+            case 'latest':
+                $filteredProducts = $filteredProducts->orderBy('created_at', 'desc');
+                break;
+            case 'popularity':
+                $filteredProducts = $filteredProducts
+                    ->leftJoin('orders', 'products.id', '=', 'orders.productId')
+                    ->select('products.*', DB::raw('COUNT(orders.id) as order_count'))
+                    ->groupBy('products.id', 'products.title', 'products.description','products.image',
+                    'products.category','products.quantity','products.size','products.color',
+                    'products.price','products.discountPrice','products.created_at','products.updated_at')
+                    ->orderBy('order_count', 'desc');
+
+                    break;
+            default:
+                break;
+        }
+    }
+
+    $filteredProducts = $filteredProducts->paginate(12);
+
+    return view('home.shop', compact(
+        'cartCount',
+        'categories',
+        'filteredProducts',
+        'selectedColor',
+        'selectedSize',
+        'selectedPriceRange',
+        'selectedCategory',
+        'selectedSortBy',
+        'colors',
+        'sizes',
+        'totalResults'
+    ));
+}
+
+
+
+}    
+
+
+ public function saintCheckout(){
+        $client = Auth::user();
+        $clientId = $client->id;
+        $data = Cart::where('userId', '=', $clientId)->get();
+    
+        if ($data->isEmpty()) {
+            return view('home.empty');
+        } else {
+            $cart = Cart::where('userId', '=', $clientId)->get();
+            $orderId = null;
+    
+            // Check if an order ID is already associated with the cart items
+            if ($cart->isNotEmpty()) {
+                $orderId = $cart[0]->ordered;
+            }
+    
+            foreach ($cart as $cartItem) {
+                // Check if an order ID is already associated with the cart item
+                $orderId = $cartItem->ordered;
+    
+                $itemOrdered = null;
+    
+                if ($orderId) {
+                    // Order already exists, retrieve the existing order
+                    $itemOrdered = Order::find($orderId);
+                }
+    
+                if (!$itemOrdered) {
+                    // Order does not exist, create a new one
+                    $itemOrdered = new Order();
+                    $itemOrdered->save();
+    
+                    $orderId = $itemOrdered->id;
+                    // Update the ordered field for the current cart item
+                    $cartItem->ordered = $orderId;
+                    $cartItem->save();
+                }
+    
+                // Update the fields for each cart item
+                $itemOrdered->name = $cartItem->name;
+                $itemOrdered->lastName = $cartItem->lastName;
+                $itemOrdered->email = $cartItem->email;
+                $itemOrdered->phone = $cartItem->phone;
+                $itemOrdered->address = $cartItem->address;
+                $itemOrdered->country = $cartItem->country;
+                $itemOrdered->apartment = $cartItem->apartment;
+                $itemOrdered->state = $cartItem->state;
+                $itemOrdered->town = $cartItem->town;
+                $itemOrdered->postCode = $cartItem->postCode;
+                $itemOrdered->userId = $cartItem->userId;
+
+                $itemOrdered->productTitle = $cartItem->productTitle;
+                $itemOrdered->image = $cartItem->image;
+                $itemOrdered->color = $cartItem->color;
+                $itemOrdered->size = $cartItem->size;
+                $itemOrdered->price = $cartItem->price;
+                $itemOrdered->quantity = $cartItem->quantity;
+                $itemOrdered->productId = $cartItem->productId;
+                $itemOrdered->paymentStatus = 'processing....';
+                $itemOrdered->trxRef = 'N/A';
+                $itemOrdered->trxId = 'N/A';
+                $itemOrdered->deliveryStatus = 'pending...';
+    
+                $cartProductIds = $cart->pluck('productId')->toArray();
+
+               // Retrieve the order items that are associated with the user
+                $existingOrderItems = Order::where('userId', '=', $clientId)->get();
+
+                foreach ($existingOrderItems as $existingOrderItem) {
+                // Check if the order item's product ID exists in the current cart
+                 $foundInCart = $cart->contains('productId', $existingOrderItem->productId);
+
+                    if (!$foundInCart && $existingOrderItem->paymentStatus !== 'Payment Confirmed' && $existingOrderItem->paymentStatus !== 'Transaction Failed') {
+                     // Update the existing order item with the corresponding cart item's values
+                        $cartItem = Cart::where('productId', '=', $existingOrderItem->productId)
+                        ->where('userId', '=', $clientId)
+                        ->orderBy('created_at', 'desc')
+                        ->first();
+
+                    if ($cartItem) {
+                       $existingOrderItem->name = $cartItem->name;
+                       $existingOrderItem->lastName = $cartItem->lastName;
+                       $existingOrderItem->email = $cartItem->email;
+                       $existingOrderItem->phone = $cartItem->phone;
+                       $existingOrderItem->address = $cartItem->address;
+                       $existingOrderItem->userId = $cartItem->userId;
+
+                       $existingOrderItem->productTitle = $cartItem->productTitle;
+                       $existingOrderItem->image = $cartItem->image;
+                       $existingOrderItem->color = $cartItem->color;
+                       $existingOrderItem->size = $cartItem->size;
+                       $existingOrderItem->price = $cartItem->price;
+                       $existingOrderItem->quantity = $cartItem->quantity;
+                       $existingOrderItem->productId = $cartItem->productId;
+                       $existingOrderItem->paymentStatus = $cartItem->paymentStatus;
+                       $existingOrderItem->trxRef =  $cartItem->trxRef;
+                       $existingOrderItem->trxId =  $cartItem->trxId;
+                       $existingOrderItem->deliveryStatus =  $cartItem->deliveryStatus;
+
+                       $existingOrderItem->country = $cartItem->country;
+                       $existingOrderItem->town = $cartItem->town;
+                       $existingOrderItem->state = $cartItem->state;
+                       $existingOrderItem->postCode = $cartItem->postCode;
+                       $existingOrderItem->apartment = $cartItem->apartment;
+                       
+                        $existingOrderItem->save();
+                    } else {
+                       // Handle the case where the associated cart item was deleted
+                        //existingOrderItem->ordered = $cartItem->ordered;
+                       // You can choose to delete the order item or update its status as needed
+                       // For example:
+                        $existingOrderItem->delete();
+                    }
+                }
+            }
+
+            $itemOrdered->save();
+        }
+    
+            // Retrieve the product IDs from the current cart
+            $cartProductIds = $cart->pluck('productId')->toArray();
+    
+            // Retrieve the order items that are associated with the user
+            $existingOrderItems = Order::where('userId', '=', $clientId)->get();
+    
+            foreach ($existingOrderItems as $existingOrderItem) {
+                $foundInCart = in_array($existingOrderItem->productId, $cartProductIds);
+    
+                if (!$foundInCart && $existingOrderItem->paymentStatus !== 'Payment Confirmed' && $existingOrderItem->paymentStatus !== 'Transaction Failed') {
+                    // Delete the order item that was removed from the cart and not associated with any other cart
+                    $existingOrderItem->delete();
+                }
+            }
+    
+            // Retrieve the latest order after saving the items
+            $latestOrder = Order::find($orderId);
+            $cartCount = cart::where('userId', '=', $clientId)->sum('quantity');
+            $editAddress=user::find($clientId);
+    
+            return view('home.checkout', compact('cart', 'latestOrder', 'cartCount', 'editAddress'));
+        }
+    }
+
+public function payment(Request $request)
+    {
+        // Process the payment request
+        if ($request->has('pay')) {
+            $email = $request->input('email');
+            $amount = $request->input('amount');
+            $name = $request->input('name');
+            $lastName = $request->input('lastName');
+    
+            // Prepare our rave request
+            $requestPayload = [
+                'tx_ref' => time(),
+                'amount' => $amount,
+                'currency' => 'NGN',
+                'payment_options' => 'card',
+                'redirect_url' => route('paymentHandle'),
+                'customer' => [
+                    'email' => $email,
+                    'name' => $name,
+                    'lastName' => $lastName,
+                ],
+                'meta' => [
+                    'price' => $amount
+                ],
+                'customizations' => [
+                    'title' => 'Paying for a sample product',
+                    'description' => 'sample'
+                ]
+            ];
+
+              // Make the API call
+              $curl = curl_init();
+            // Set the CA root certificates bundle option
+              curl_setopt($curl, CURLOPT_CAINFO, public_path('cacert.pem'));
+     
+            $response = curl_exec($curl);
+            curl_close($curl);
+
+           $res = json_decode($response);
+          
+    
+            // Set the URL for the cURL request
+            curl_setopt($curl, CURLOPT_URL, 'https://api.flutterwave.com/v3/payments');
+    
+            // Set other cURL options...
+            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+            curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($requestPayload));
+            curl_setopt($curl, CURLOPT_HTTPHEADER, array(
+                'Authorization: Bearer FLWSECK-1c7390a1a69a9925f9e6c412d10523b5-1883e45b178vt-X',
+                'Content-Type: application/json'
+            ));
+    
+            // Set the CA root certificates bundle option
+            curl_setopt($curl, CURLOPT_CAINFO, public_path('cacert.pem'));
+    
+            $response = curl_exec($curl);
+            $err = curl_error($curl);
+            curl_close($curl);
+    
+            if ($err) {
+                echo "cURL Error: " . $err;
+            } else {
+                echo "API Response: " . $response;
+                $res = json_decode($response);
+    
+                if ($res && isset($res->status) && $res->status == 'success') {
+                    $link = $res->data->link;
+                    return redirect($link);
+                } else {
+                    echo 'We cannot process your payment';
+                }
+            }
+        }
+    } could it be here
+
+    
+
+
+
+
+
